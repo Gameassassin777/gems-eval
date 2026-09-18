@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gems-eval"
+version = "0.1.0"
+description = "Local evaluation for the DOE GEMS fault-detection challenge: distance-weighted Tversky index, held-out-segment protocol, spatial block folds, submission validator"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "scipy>=1.10", "scikit-image>=0.21"]
+
+[project.optional-dependencies]
+io = ["rasterio>=1.3"]
+dev = ["pytest>=7", "rasterio>=1.3"]
+
+[project.scripts]
+gems-eval = "gems_eval.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["gems_eval*"]
