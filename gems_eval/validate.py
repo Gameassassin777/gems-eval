@@ -24,6 +24,9 @@ def validate_submission(sub_path: str, template_path: str) -> dict:
     checks["values_in_unit_interval"] = bool((arr[finite] >= 0).all() and (arr[finite] <= 1).all())
     checks["nan_outside_polygon"] = bool((~finite[~inside]).all()) if (~inside).any() else True
     checks["finite_inside_polygon"] = bool(finite[inside].all())
+    # a collapsed model (fault everywhere, or nowhere) passes every format check; catch it here
+    frac = float(np.mean(arr[inside] >= 0.5)) if inside.any() else 0.0
+    checks["plausible_coverage"] = bool(0.001 <= frac <= 0.30)
     stats = {
         "mean_inside": float(np.nanmean(arr[inside])) if inside.any() else float("nan"),
         "frac_ge_0.5_inside": float(np.mean(arr[inside] >= 0.5)) if inside.any() else float("nan"),

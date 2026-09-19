@@ -74,3 +74,22 @@ def test_skeleton_top_fraction_thins_to_lines():
     out = skeleton_top_fraction(band, 0.05)
     assert out[np.isfinite(out)].sum() < 1.5 * y.sum()                           # thinned to ~one line
     assert dti(out, y) > dti(band, y)                                            # and it scores better
+
+
+def test_validator_rejects_collapsed_maps(tmp_path):
+    rasterio = __import__("pytest").importorskip("rasterio")
+    from rasterio.transform import from_origin
+    from gems_eval.validate import validate_submission
+    H, W = 64, 64
+    tmpl = np.zeros((H, W), np.int8); tmpl[:, :8] = -1                          # nodata strip
+    prof = dict(driver="GTiff", height=H, width=W, count=1, crs="EPSG:32611", transform=from_origin(0, 0, 100, 100))
+    with rasterio.open(tmp_path / "t.tif", "w", dtype="int8", nodata=-1, **prof) as d: d.write(tmpl, 1)
+    def write(name, arr):
+        with rasterio.open(tmp_path / name, "w", dtype="float32", nodata=np.nan, **prof) as d: d.write(arr, 1)
+        return validate_submission(str(tmp_path / name), str(tmp_path / "t.tif"))
+    good = np.zeros((H, W), np.float32); good[30, 10:60] = 1.0; good[:, :8] = np.nan
+    assert write("good.tif", good)["ok"]
+    everywhere = np.ones((H, W), np.float32); everywhere[:, :8] = np.nan
+    assert not write("everywhere.tif", everywhere)["checks"]["plausible_coverage"]
+    nowhere = np.zeros((H, W), np.float32); nowhere[:, :8] = np.nan
+    assert not write("nowhere.tif", nowhere)["checks"]["plausible_coverage"]
