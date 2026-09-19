@@ -2,14 +2,14 @@
 
   gems-eval holdout  --labels existing_faults.tif --out seghold/ [--frac 0.3 --seed 0 --buffer 3]
   gems-eval score    --pred pred.tif --eval-labels seghold/eval_labels.tif [--top 0.02] [--json]
-  gems-eval trim     --pred pred.tif --template existing_faults.tif --out trimmed.tif --top 0.02 [--binarise]
+  gems-eval trim     --pred pred.tif --template existing_faults.tif --out trimmed.tif --top 0.05 [--skeleton --mask-known 3 | --binarise]
   gems-eval validate --sub submission.tif --template existing_faults.tif
 """
 from __future__ import annotations
 import argparse, json, os, sys
 import numpy as np
 from .holdout import split_segments, holdout_dti, summary
-from .postprocess import keep_top_fraction
+from .postprocess import keep_top_fraction, skeleton_top_fraction
 from .validate import validate_submission
 
 
@@ -39,6 +39,8 @@ def cmd_score(a):
            "mean_pred": float(np.mean(p[valid]))}
     if a.top:
         res[f"dti_top{a.top:g}"] = holdout_dti(keep_top_fraction(p, a.top, valid=valid), ev)
+        train_faults = ev == 2                      # the buffer marks where the training faults are
+        res[f"dti_skel_top{a.top:g}"] = holdout_dti(skeleton_top_fraction(p, a.top, valid=valid, exclude=train_faults, exclude_dilate_px=0), ev)
     print(json.dumps(res, indent=1) if a.json else "\n".join(f"{k}: {v:.4f}" for k, v in res.items()))
 
 
@@ -46,12 +48,16 @@ def cmd_trim(a):
     import rasterio
     pred, prof = _read(a.pred); tmpl, _ = _read(a.template)
     inside = tmpl >= 0
-    out = keep_top_fraction(np.nan_to_num(pred.astype(np.float32), nan=0.0), a.top, valid=inside, binarise=a.binarise)
+    p = np.nan_to_num(pred.astype(np.float32), nan=0.0)
+    if a.skeleton:
+        out = skeleton_top_fraction(p, a.top, valid=inside, exclude=(tmpl >= 1) if a.mask_known else None, exclude_dilate_px=a.mask_known)
+    else:
+        out = keep_top_fraction(p, a.top, valid=inside, binarise=a.binarise)
     out[~inside] = np.nan
     prof.update(dtype="float32", nodata=np.nan, count=1, compress="deflate")
     with rasterio.open(a.out, "w", **prof) as d:
         d.write(out.astype(np.float32), 1)
-    print(f"kept top {a.top:g} of valid pixels -> {a.out}; mean inside {np.nanmean(out[inside]):.4f}")
+    print(f"kept top {a.top:g} of valid pixels{' as a skeleton' if a.skeleton else ''} -> {a.out}; mean inside {np.nanmean(out[inside]):.4f}")
 
 
 def cmd_validate(a):
@@ -69,7 +75,10 @@ def main(argv=None):
     s.add_argument("--top", type=float, default=0.02); s.add_argument("--json", action="store_true"); s.set_defaults(f=cmd_score)
     t = sub.add_parser("trim"); t.add_argument("--pred", required=True); t.add_argument("--template", required=True)
     t.add_argument("--out", required=True); t.add_argument("--top", type=float, default=0.02)
-    t.add_argument("--binarise", action="store_true"); t.set_defaults(f=cmd_trim)
+    t.add_argument("--binarise", action="store_true")
+    t.add_argument("--skeleton", action="store_true", help="thin the kept pixels to one-pixel lines set to 1.0 (needs scikit-image)")
+    t.add_argument("--mask-known", type=int, default=3, metavar="PX", help="with --skeleton: zero known faults (template >= 1) dilated by PX before the cut; 0 = no mask")
+    t.set_defaults(f=cmd_trim)
     v = sub.add_parser("validate"); v.add_argument("--sub", required=True); v.add_argument("--template", required=True)
     v.set_defaults(f=cmd_validate)
     a = p.parse_args(argv); a.f(a)

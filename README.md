@@ -41,10 +41,11 @@ gems-eval holdout --labels existing_faults.tif --out seghold/ --frac 0.3 --seed 
 
 # 2. train on seghold/train_labels.tif, then score a prediction on the held-out segments
 gems-eval score --pred pred.tif --eval-labels seghold/eval_labels.tif --top 0.02
-#   dti: 0.0883   coverage_ge_0.5: 0.0298   mean_pred: 0.0349   dti_top0.02: 0.1056
+#   dti: 0.0883   coverage_ge_0.5: 0.0298   mean_pred: 0.0349   dti_top0.02: 0.1056   dti_skel_top0.02: 0.1122
 
-# 3. trim a full-label prediction to its top 2% of study-area pixels (NaN outside the polygon)
-gems-eval trim --pred pred_all_labels.tif --template existing_faults.tif --out submission.tif --top 0.02
+# 3. turn a full-label prediction into the file we actually submit: known faults masked (3 px),
+#    top 5% of the remaining study-area pixels, thinned to one-pixel lines at 1.0, NaN outside the polygon
+gems-eval trim --pred pred_all_labels.tif --template existing_faults.tif --out submission.tif --top 0.05 --skeleton --mask-known 3
 
 # 4. check the file against the published format before uploading
 gems-eval validate --sub submission.tif --template existing_faults.tif
